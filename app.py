@@ -18,45 +18,40 @@ if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=
         results = []
         for ticker in tickers:
             try:
-                # Ambil data 5 menit
                 data = yf.download(ticker, period="3d", interval="5m", progress=False)
-                if len(data) < 40: continue
+                if len(data) < 40: 
+                    continue
 
                 last = data.iloc[-1]
                 prev = data.iloc[-2]
                 current_price = last['Close']
 
-                # === INDIKATOR SCALPING ===
-                # RSI 14
+                # RSI
                 delta = data['Close'].diff()
                 gain = delta.where(delta > 0, 0).rolling(14).mean().iloc[-1]
                 loss = (-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1]
                 rsi = 100 - (100 / (1 + gain/loss)) if loss != 0 else 50
 
-                # MACD (Fast untuk scalping)
+                # MACD Fast
                 exp1 = data['Close'].ewm(span=8, adjust=False).mean()
                 exp2 = data['Close'].ewm(span=17, adjust=False).mean()
                 macd_line = exp1 - exp2
-                macd_signal_line = macd_line.ewm(span=9, adjust=False).mean()
-                macd_hist = macd_line - macd_signal_line
+                macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+                macd_hist = macd_line - macd_signal
 
                 # VWAP
-                data['Typical Price'] = (data['High'] + data['Low'] + data['Close']) / 3
-                data['VWAP'] = (data['Typical Price'] * data['Volume']).cumsum() / data['Volume'].cumsum()
+                data['TP'] = (data['High'] + data['Low'] + data['Close']) / 3
+                data['VWAP'] = (data['TP'] * data['Volume']).cumsum() / data['Volume'].cumsum()
                 vwap = data['VWAP'].iloc[-1]
 
-                # EMA
                 ema9 = data['Close'].ewm(span=9).mean().iloc[-1]
                 ema21 = data['Close'].ewm(span=21).mean().iloc[-1]
 
-                # Volume
-                vol_now = data['Volume'].iloc[-1]
-                vol_avg = data['Volume'].tail(30).mean()
-                vol_ratio = round(vol_now / vol_avg, 2) if vol_avg > 0 else 1
+                vol_ratio = round(data['Volume'].iloc[-1] / data['Volume'].tail(30).mean(), 2) if len(data) > 30 else 1.0
 
                 change_5m = round(((current_price - prev['Close']) / prev['Close']) * 100, 2)
 
-                # === LOGIKA SINYAL SCALPING ===
+                # Sinyal Scalping
                 signal = "Neutral"
                 score = 50
 
@@ -73,11 +68,11 @@ if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=
                     signal = "🔴 SELL"
                     score = 72
 
-                # Entry, Stop Loss & Target
+                # Entry & Risk Management
                 if "BUY" in signal:
                     entry = round(current_price, 2)
-                    stop_loss = round(current_price * 0.985, 2)   # Risk ~1.5%
-                    target = round(current_price * 1.022, 2)      # Target ~2.2%
+                    stop_loss = round(current_price * 0.985, 2)
+                    target = round(current_price * 1.022, 2)
                 elif "SELL" in signal:
                     entry = round(current_price, 2)
                     stop_loss = round(current_price * 1.015, 2)
@@ -107,12 +102,12 @@ if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=
             except:
                 continue
 
-        df = pd.DataFrame(results).sort_values('Score', ascending=False)
-
-        st.subheader("⚡ Sinyal Scalping Saat Ini")
-        if not df.empty:
+        # === PERBAIKAN ERROR ===
+        if results:
+            df = pd.DataFrame(results).sort_values('Score', ascending=False)
+            st.subheader("⚡ Sinyal Scalping Saat Ini")
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("Belum ada sinyal scalping yang kuat saat ini.")
+            st.warning("Tidak ada data yang berhasil diambil. Coba lagi saat pasar buka atau cek ticker.")
 
-st.caption("Data 5 menit • Refresh berkala saat pasar buka • Score ≥ 75 = sinyal lebih kuat • Scalping mode")
+st.caption("Data 5 menit • Refresh setiap beberapa menit saat pasar buka • Score ≥ 75 = sinyal kuat")
