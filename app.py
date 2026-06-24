@@ -2,9 +2,10 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, time
 import pytz
-import time
+
+st.set_page_config(page_title="Scalping Screener IDX", page_icon="🚀", layout="wide")
 
 # ==================== TICKER LIST (65 ticker) ====================
 AUTO_TICKERS = [
@@ -21,7 +22,7 @@ AUTO_TICKERS = [
     "NCKL.JK", "BIRD.JK", "MEGA.JK", "ARTO.JK", "BTPS.JK", "BDMN.JK", "PNBN.JK"
 ]
 
-# ==================== WAKTU WIB ====================
+# ==================== WAKTU WIB & STATUS PASAR ====================
 def get_wib_time():
     wib = pytz.timezone('Asia/Jakarta')
     return datetime.now(wib)
@@ -29,10 +30,10 @@ def get_wib_time():
 def is_market_open():
     now = get_wib_time()
     current_time = now.time()
-    weekday = now.weekday()  # 0=Senin ... 4=Jumat
+    weekday = now.weekday()
 
-    if weekday >= 5:
-        return False, "Pasar TUTUP (Weekend)"
+    if weekday >= 5:  # Sabtu & Minggu
+        return False, "🔴 Pasar TUTUP (Weekend)"
     
     open_time = time(9, 0)
     close_time = time(15, 50)
@@ -48,10 +49,8 @@ def is_market_open():
 @st.cache_data(ttl=25)
 def fetch_stock_data(tickers):
     results = []
-    progress_bar = st.progress(0, text="Mengambil data saham likuid...")
-    
-    market_open, status = is_market_open()
-    
+    progress_bar = st.progress(0, text="Mengambil data real-time...")
+
     for i, ticker in enumerate(tickers):
         try:
             data = yf.download(ticker, period="1d", interval="1m", progress=False, timeout=8)
@@ -61,22 +60,19 @@ def fetch_stock_data(tickers):
             current = data['Close'].iloc[-1]
             volume_today = int(data['Volume'].sum())
 
-            # Change %
             hist_day = yf.download(ticker, period="2d", interval="1d", progress=False)
             change_pct = ((current - hist_day['Close'].iloc[-2]) / hist_day['Close'].iloc[-2] * 100) if len(hist_day) >= 2 else 0
 
-            # Relative Volume
             hist_vol = yf.download(ticker, period="20d", interval="1d", progress=False)
             avg_vol = float(hist_vol['Volume'].mean()) if not hist_vol.empty else volume_today
             rel_vol = volume_today / avg_vol if avg_vol > 0 else 1.0
 
-            # RSI sederhana
+            # RSI
             delta = hist_vol['Close'].diff()
             gain = delta.where(delta > 0, 0).rolling(14).mean()
             loss = -delta.where(delta < 0, 0).rolling(14).mean()
             rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
-            rsi_val = round(rsi.iloc[-1], 1) if not rsi.empty else 50
+            rsi_val = round(100 - (100 / (1 + rs)).iloc[-1], 1) if not rs.empty else 50
 
             signal = "Neutral"
             if change_pct > 1.5 and rel_vol > 2.0:
@@ -98,7 +94,7 @@ def fetch_stock_data(tickers):
         except:
             pass
 
-        progress_bar.progress((i + 1) / len(tickers), text=f"{ticker.replace('.JK','')} ({i+1}/{len(tickers)})")
+        progress_bar.progress((i + 1) / len(tickers), text=f"{ticker.replace('.JK','')}")
 
     progress_bar.empty()
     return pd.DataFrame(results)
@@ -121,17 +117,16 @@ with st.sidebar:
 df = fetch_stock_data(AUTO_TICKERS)
 
 if df.empty:
-    st.warning("Belum ada data yang terambil. Coba klik Refresh lagi.")
+    st.warning("⏳ Belum ada data yang terambil. Klik Refresh lagi atau tunggu sebentar.")
     st.stop()
 
 df["Score"] = df["Rel Volume"] * abs(df["Perubahan %"])
 
-# Filter
 col1, col2 = st.columns(2)
 with col1:
-    min_rel = st.slider("Min Relative Volume", 0.5, 5.0, 1.2, 0.1)
+    min_rel = st.slider("Min Relative Volume", 0.5, 5.0, 1.0, 0.1)
 with col2:
-    min_change = st.slider("Min |Perubahan %|", 0.0, 10.0, 0.7, 0.1)
+    min_change = st.slider("Min |Perubahan %|", 0.0, 10.0, 0.5, 0.1)
 
 filtered = df[(df["Rel Volume"] >= min_rel) & (abs(df["Perubahan %"]) >= min_change)].copy()
 filtered = filtered.sort_values("Score", ascending=False)
@@ -142,13 +137,13 @@ st.dataframe(filtered.head(10), use_container_width=True, hide_index=True)
 # Chart
 st.subheader("📈 Chart Intraday")
 if not filtered.empty:
-    selected = st.selectbox("Pilih Ticker", options=filtered["Ticker"].tolist())
+    selected = st.selectbox("Pilih Ticker", filtered["Ticker"].tolist())
     if selected:
         try:
             chart_data = yf.download(selected + ".JK", period="1d", interval="5m", progress=False)
-            fig = go.Figure([go.Candlestick(x=chart_data.index, open=chart_data['Open'], high=chart_data['High'],
-                                            low=chart_data['Low'], close=chart_data['Close'])])
-            fig.update_layout(title=f"{selected} - Chart 5 Menit", height=500, xaxis_rangeslider_visible=False)
+            fig = go.Figure([go.Candlestick(x=chart_data.index, open=chart_data['Open'],
+                                            high=chart_data['High'], low=chart_data['Low'], close=chart_data['Close'])])
+            fig.update_layout(title=f"{selected} - 5 Menit Chart", height=500, xaxis_rangeslider_visible=False)
             st.plotly_chart(fig, use_container_width=True)
         except:
             st.warning("Chart belum tersedia.")
