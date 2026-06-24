@@ -6,11 +6,11 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Scalping IDX Harian", layout="wide", page_icon="⚡")
 st.title("⚡ Scalping IDX - Mode Harian")
-st.markdown("**Data 5 menit + Chart • Siap dipakai saat pasar buka**")
+st.markdown("**Data 5 menit + Chart • Siap digunakan saat pasar buka**")
 
 st.sidebar.header("Pengaturan")
 tickers_input = st.text_area("Masukkan Ticker (pisah koma)", 
-    "BBCA, BBRI, BREN, DEWA, BUVA, TLKM, ASII", height=80)
+    "BBCA, BBRI, BREN, DEWA, BUVA, TLKM", height=80)
 
 if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=True):
     with st.spinner("Mengambil data 5 menit..."):
@@ -29,9 +29,9 @@ if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=
 
                 # RSI
                 delta = data['Close'].diff()
-                gain = delta.where(delta > 0, 0).rolling(14).mean().iloc[-1]
-                loss = (-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1]
-                rsi = float(100 - (100 / (1 + gain/loss))) if loss != 0 else 50.0
+                gain = float(delta.where(delta > 0, 0).rolling(14).mean().iloc[-1])
+                loss = float((-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1])
+                rsi = 100 - (100 / (1 + gain/loss)) if loss != 0 else 50.0
 
                 # MACD Fast
                 exp1 = data['Close'].ewm(span=8, adjust=False).mean()
@@ -47,7 +47,7 @@ if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=
 
                 change_5m = round(((current_price - prev_price) / prev_price) * 100, 2)
 
-                # Sinyal Scalping
+                # Sinyal
                 signal = "Neutral"
                 score = 50
 
@@ -85,14 +85,14 @@ if st.button("🚀 Scan Scalping Sekarang", type="primary", use_container_width=
                 with col1:
                     st.metric(f"{ticker.replace('.JK','')}", f"Rp {current_price:,.0f}", f"{change_5m}%")
                     st.success(f"**Signal:** {signal} | **Score:** {score}")
-                    st.write(f"RSI: {round(rsi,1)} | VWAP: {round(vwap,2)} | MACD Hist: {macd_hist:.4f}")
+                    st.write(f"RSI: {round(rsi,1)} | VWAP: {round(vwap,2)}")
                     st.write(f"**Entry:** {entry} | **SL:** {stop_loss} | **Target:** {target} | **R:R** 1:{rr}")
 
                 with col2:
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=data.index, y=data['Close'], name="Harga", line=dict(color="#1f77b4")))
                     fig.add_trace(go.Scatter(x=data.index, y=data['VWAP'], name="VWAP", line=dict(color="purple", dash="dash")))
-                    fig.update_layout(title=f"{ticker.replace('.JK','')} - Chart 5 Menit", height=450, template="plotly_dark")
+                    fig.update_layout(title=f"{ticker.replace('.JK','')} - 5 Menit Chart", height=450)
                     st.plotly_chart(fig, use_container_width=True)
 
             except Exception as e:
